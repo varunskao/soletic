@@ -14,7 +14,7 @@
 ### Option 1: Clone and Use
 ```bash
 # Clone the repository
-git clone https://github.com/yourrepo/soletic.git
+git clone https://github.com/varunskao/soletic.git
 cd soletic
 
 # Install dependencies
