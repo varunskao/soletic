@@ -39,7 +39,7 @@ def require_config(func):
 
         # Check for API_KEY in the environment and add it to the config.
         if not os.getenv("API_KEY"):
-            click.echo("API_KEY not found in environment. Please define API_KEY in your .env file.", err=True)
+            click.echo("HELIUS_API_KEY not found in environment. Please define HELIUS_API_KEY in your .env file.", err=True)
             ctx.exit(1)
 
         return ctx.invoke(func, *args, **kwargs)
@@ -127,12 +127,9 @@ def getProgramDeploymentDate(ctx, program_id):
     if verbose:
         click.echo(f"Querying deployment date for program ID: {program_id}")
 
-    # --- Replace the code below with your actual logic ---
-    # Here we simulate an API call by returning the current time as the "deployment date"
+    # ----------------------------------------------------------
+    # Replace the code below with the actual logic. I've just simulated an API call by returning the current time as the "deployment date"
     simulated_deployment_date = datetime.now().isoformat()
-    # In production, replace the above line with something like:
-    # simulated_deployment_date = your_api.getProgramDeploymentDate(api_key, program_id)
-    # and add error handling, retries, etc.
     # ----------------------------------------------------------
 
     click.echo(f"Program {program_id} was deployed on: {simulated_deployment_date}")
