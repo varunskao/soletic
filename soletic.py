@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 import json
+import time
 import os
 import click
-from datetime import datetime
 # from typing import Dict
 from dotenv import load_dotenv
+from getProgramDeploymentTime import get_deployment_timestamp
+from solders.pubkey import Pubkey
+# from dataclasses import dataclass
 
 
 # Add a feature where configurations can be stored in a json file for use. In docker container, make sure this is referenced in the mount.
@@ -12,11 +15,21 @@ CONFIG_FILE = os.path.expanduser("~/.soletic_config.json")
 load_dotenv()
 
 
+# TODO: Potentially create context objects as required
+# @dataclass
+# class Context:
+#     network: str
+#     cache: bool
+#     verbose: bool
+#     log_file: str
+
+
 def load_config():
     """Load configuration from a file."""
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, "r") as f:
             return json.load(f)
+            # return Context(**json.load(f))
     return {}
 
 
@@ -59,28 +72,22 @@ def cli(ctx):
         ctx.obj = load_config()
 
 
-# @cli.command()
-# @click.option('--network', default="mainnet" ,help='Your API key for accessing the Solana node.')
-# @click.option('--cache/--no-cache', default=None, help='Whether to use a cache for improved performance.')
-# @click.option('--verbose/--no-verbose', default=None, help='Enable verbose logging.')
-# @click.option('--log-file', help='Path to the log file.')
-# def setup(api_key, cache, verbose, log_file):
-
+# TODO: If the configuration file does not have specific values defined, we need to make sure to handle that scenario
 @cli.command()
 @require_config
 @click.option('--force', is_flag=True, help="Force updating the configuration without prompting.")
+@click.option('--network', default=None ,help='The choice of network: "mainnet" or "devnet".')
+@click.option('--cache/--no-cache', default=None, help='Whether to use a cache for improved performance.')
+@click.option('--verbose/--no-verbose', default=None, help='Enable verbose logging.')
+@click.option('--log-file', help='Path to the log file.')
 @click.pass_context
-def setup(ctx, force):
+def setup(ctx, force, network, cache, verbose, log_file):
     """
     Set up soletic with network and other preferences.
 
     Setup will abide by the following priority: configuration file, command-line options, prompted respones.
     """
     config = ctx.obj 
-
-    if not os.getenv("HELIUS_API_KEY"):
-        click.echo("No API_KEY found in .env file. Please define your api_key in a .env file in the root directory of the project as HELIUS_API_KEY=<YOUR_API_KEY>", err=True)
-        return
     
     if config and not force:
         click.echo("Existing configuration found:")
@@ -91,14 +98,19 @@ def setup(ctx, force):
             return
 
     # Prompt for new values, using existing values as defaults if available.
-    network = click.prompt(
-        "Which network do you want to use?", 
-        type=click.Choice(["mainnet", "devnet"], case_sensitive=False),
-        show_choices=True
-    )
-    cache = click.confirm("Use cache for improved performance?", default=config.get('cache', True))
-    verbose = click.confirm("Enable verbose logging?", default=config.get('verbose', False))
-    log_file = click.prompt("Enter a log file path (or leave blank for console logging)", default=config.get('log_file', ''), show_default=True)
+    if not network:
+        network = click.prompt(
+            "Which network do you want to use?", 
+            type=click.Choice(["mainnet", "devnet"], case_sensitive=False),
+            show_choices=True
+        )
+    if not cache:
+        cache = click.confirm("Use cache for improved performance?", default=config.get('cache', True))
+    if not verbose:
+        verbose = click.confirm("Enable verbose logging?", default=config.get('verbose', False))
+    # TODO: I'm not sure if we need to specify this for the user, let's just default to console logging and allow them to pass in a flag if required
+    if not log_file:
+        log_file = click.prompt("Enter a log file path (or leave blank for console logging)", default=config.get('log_file', ''), show_default=True)
 
     # Update config dictionary.
     config.update({
@@ -116,7 +128,7 @@ def setup(ctx, force):
 @require_config
 @click.argument('program_id', type=str)
 @click.pass_context
-def getProgramDeploymentDate(ctx, program_id):
+def getProgramDeploymentDate(ctx, program_address):
     """
     Retrieve the deployment date for a given Solana contract (program).
 
@@ -125,14 +137,16 @@ def getProgramDeploymentDate(ctx, program_id):
     # Enable verbose logging if configured
     verbose = ctx.obj.get("verbose", False)
     if verbose:
-        click.echo(f"Querying deployment date for program ID: {program_id}")
+        click.echo(f"Querying deployment date for program ID: {program_address}")
 
-    # ----------------------------------------------------------
-    # Replace the code below with the actual logic. I've just simulated an API call by returning the current time as the "deployment date"
-    simulated_deployment_date = datetime.now().isoformat()
-    # ----------------------------------------------------------
-
-    click.echo(f"Program {program_id} was deployed on: {simulated_deployment_date}")
+    # TODO: Need to handle error from parsing the pubkey more elegantly
+    program_pubkey = Pubkey.from_string(program_address)
+    deployment_timestamp = get_deployment_timestamp(ctx.obj, program_pubkey, num_transactions=50)
+    if deployment_timestamp:
+        formatted_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(deployment_timestamp))
+        click.echo(f"Program {program_address} was deployed on: {formatted_time} (Unix time: {deployment_timestamp}).")
+    else:
+        click.echo(f"Could not determine the deployment timestamp for Program {program_address}.")
 
 
 if __name__ == '__main__':
