@@ -101,7 +101,7 @@ def setup(ctx, force, network, cache, verbose, log_file):
     if not network:
         network = click.prompt(
             "Which network do you want to use?", 
-            type=click.Choice(["mainnet", "devnet"], case_sensitive=False),
+            type=click.Choice(["mainnet", "devnet", "testnet"], case_sensitive=False),
             show_choices=True
         )
     if not cache:
