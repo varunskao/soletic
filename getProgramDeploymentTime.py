@@ -17,24 +17,6 @@ logger = logging.getLogger(__name__)
 rpc_url = lambda network: f"https://{network}.helius-rpc.com/"
 
 
-def get_program_accounts(context: Dict[str, str], address: str):
-    """
-    Calls the getProgramAccounts endpoint.
-    """
-    payload = {
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "getProgramAccounts",
-        "params": [address]
-    }
-    url = rpc_url(context.get("network")) + f"?api-key={os.getenv("HELIUS_API_KEY")}"
-    response = requests.post(url, json=payload)
-    # TODO: Add better error handling here and logging for verbosity
-    response.raise_for_status()  # Raises an exception for HTTP errors
-    data = response.json()
-    return data, data.get("result", [])
-
-
 def get_earliest_signatures(context: Dict[str, str], address: Pubkey, limit: int=1000) -> deque:
     """
     Recursively fetches signatures for the given address until the earliest transaction
