@@ -5,8 +5,9 @@ import os
 import click
 # from typing import Dict
 from dotenv import load_dotenv
-from getProgramDeploymentTime import get_deployment_timestamp
 from solders.pubkey import Pubkey
+
+from soletic.get_program_deployment_time import get_deployment_timestamp
 # from dataclasses import dataclass
 
 
@@ -139,9 +140,7 @@ def getProgramDeploymentDate(ctx, program_address):
     if verbose:
         click.echo(f"Querying deployment date for program ID: {program_address}")
 
-    # TODO: Need to handle error from parsing the pubkey more elegantly
-    program_pubkey = Pubkey.from_string(program_address)
-    deployment_timestamp = get_deployment_timestamp(ctx.obj, program_pubkey, num_transactions=50)
+    deployment_timestamp = get_deployment_timestamp(ctx.obj, program_address, num_transactions=50)
     if deployment_timestamp:
         formatted_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(deployment_timestamp))
         click.echo(f"Program {program_address} was deployed on: {formatted_time} (Unix time: {deployment_timestamp}).")
