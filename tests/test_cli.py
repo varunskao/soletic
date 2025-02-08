@@ -63,6 +63,7 @@ class TestCLI:
                 updated_config = json.load(f)
                 assert updated_config['network'] == 'devnet'
 
+    # TODO: Update test to use update not setup
     def test_cli_setup_force(self, runner: CliRunner):
         result = runner.invoke(cli, ["setup", "--force", "--network", "mainnet"])
         expected_path = os.path.expanduser("~/.soletic_config.json")

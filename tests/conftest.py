@@ -10,7 +10,7 @@ from click.testing import CliRunner
 # ---------------- FIXTURES ----------------
 @pytest.fixture
 def mock_context():
-    return {"network": "mainnet"}
+    return {"network": "mainnet", "cache": True, "verbose": False, "log_file": None}
 
 @pytest.fixture
 def runner():
