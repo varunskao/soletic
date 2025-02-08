@@ -14,10 +14,35 @@ from soletic.utils.errors import *
 
 logger = logging.getLogger(__name__)
 
+from pathlib import Path
+from functools import wraps
+import json
+
+logger = logging.getLogger(__name__)
+
+def get_cache_file():
+    """Get cache file path from environment variable or default location"""
+    cache_dir = os.getenv('SOLETIC_CACHE_DIR', os.path.expanduser("~/.soletic_cache"))
+    Path(cache_dir).mkdir(parents=True, exist_ok=True)
+    return Path(cache_dir) / 'soletic_cache.json'
 
 def program_cache(maxsize=1000):
-    """Cache decorator that only uses program_address as key"""
+    """Cache decorator that uses both memory and JSON file for persistence"""
+    # Initialize cache with persistent data
     cache = {}
+    try:
+        with open(get_cache_file()) as f:
+            cache = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        logger.debug("No existing cache file found or cache file corrupted")
+    
+    def save_persistent_cache(updated_cache):
+        try:
+            # Convert memory cache format to persistent format
+            with open(get_cache_file(), 'w') as f:
+                json.dump(updated_cache, f)
+        except Exception as e:
+            logger.warning(f"Error saving to persistent cache: {e}")
     
     def decorator(func):
         @wraps(func)
@@ -26,19 +51,24 @@ def program_cache(maxsize=1000):
                 return func(program_address, context)
 
             network = context["network"]
+            cache_key = f"{program_address}_{network}"
             
-            # Only use program_address as cache key
-            if (program_address, network) in cache:
-                return cache[(program_address, network)]
+            # Check memory cache
+            if cache_key in cache:
+                return cache[cache_key]
             
+            # If not in cache, call the function
             result = func(program_address, context)
             
-            # Implement maxsize by removing oldest entry if cache is full
-            if len(cache) >= maxsize:
-                # Remove first item (oldest)
-                cache.pop(next(iter(cache)))
+            # Update cache if we got a result
+            if result:
+                # Update memory cache with size limit
+                if len(cache) >= maxsize:
+                    cache.pop(next(iter(cache)))
+                cache[cache_key] = result
+                
+                save_persistent_cache(cache)
             
-            cache[(program_address, network)] = result
             return result
         
         return wrapper
@@ -143,6 +173,11 @@ def _check_and_get_program_account(client: Client, program_pubkey: Pubkey) -> Ge
     return program_account
 
 
+def parse_error(e: Exception) -> str:
+    code = getattr(e, "code", "UNDEFINED")
+    return f"{code} | {e.args[0].__str__()}" 
+
+
 @program_cache(maxsize=1000)
 def get_deployment_timestamp(
     program_address: str, 
@@ -158,10 +193,10 @@ def get_deployment_timestamp(
     logger.info(f"{log_prefix} Start Logic")
 
     try:
+        # ---- CHECK ----
         program_pubkey = _check_and_get_pubkey_from_address(program_address)
     except Exception as e:
-        code = getattr(e, "code", "UNDEFINED")
-        return f"{code} | {e.args[0].__str__()}" 
+        return parse_error(e)
 
     try:
         # ---- CHECK ----
@@ -201,5 +236,4 @@ def get_deployment_timestamp(
 
     except Exception as e:
         client._provider.session.close()
-        code = getattr(e, "code", "UNDEFINED")
-        return f"{code} | {e.args[0].__str__()}" 
+        return parse_error(e)

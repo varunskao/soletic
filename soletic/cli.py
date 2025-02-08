@@ -2,6 +2,7 @@ import json
 import time
 import os
 import click
+from pathlib import Path
 from dotenv import load_dotenv
 from functools import wraps
 from soletic.main import get_deployment_timestamp
@@ -32,6 +33,13 @@ def save_config(config):
     click.echo(f"Configuration saved to {CONFIG_FILE}")
 
 
+def get_cache_file():
+    """Get cache file path from environment variable or default location"""
+    cache_dir = os.getenv('SOLETIC_CACHE_DIR', os.path.expanduser("~/.soletic_cache"))
+    Path(cache_dir).mkdir(parents=True, exist_ok=True)
+    return Path(cache_dir) / 'soletic_cache.json'
+
+
 def require_config(func):
     """A custom decorator to ensure configuration is loaded into methods and API_KEY exists"""
     @click.pass_context
@@ -48,12 +56,32 @@ def require_config(func):
         return ctx.invoke(func, *args, **kwargs)
     return wrapper
 
+
 def ensure_log_directory(log_file):
     """Ensure the log directory exists"""
     if log_file:
         log_dir = os.path.dirname(log_file)
         if log_dir:
             os.makedirs(log_dir, exist_ok=True)
+
+def create_cache_if_not_exists():
+    """Set up cache directory and environment variable"""
+    default_cache_dir = os.path.expanduser("~/.soletic_cache")
+    
+    # Create cache directory if it doesn't exist
+    Path(default_cache_dir).mkdir(parents=True, exist_ok=True)
+    
+    # Set environment variable
+    os.environ['SOLETIC_CACHE_DIR'] = default_cache_dir
+    
+    # Create an empty cache file if it doesn't exist
+    cache_file = Path(default_cache_dir) / 'soletic_cache.json'
+    if not cache_file.exists():
+        with open(cache_file, 'w') as f:
+            json.dump({}, f)
+    
+    return default_cache_dir
+
 
 @click.group(context_settings=dict(help_option_names=["-h", "--help"]))
 @click.pass_context
@@ -74,12 +102,12 @@ def cli(ctx):
 # TODO: If the configuration file does not have specific values defined, we need to make sure to handle that scenario
 @cli.command()
 @require_config
-@click.option('-n', '--network', default=None ,help='The choice of network: "mainnet" or "devnet".')
-@click.option('--cache', default=True, help='Whether to use a cache for improved performance.')
-@click.option('-v', '--verbose', default=False, help='Enable verbose logging.')
-@click.option('--log-file', help='Path to the log file. Defaults to console logging if not specified.')
+@click.option('-n', '--network', default=None, help='The choice of network: "mainnet" or "devnet".')
+@click.option('--cache', is_flag=True, default=True, help='Whether to use a cache for improved performance.')
+@click.option('-v', '--verbose', is_flag=True, default=False, help='Enable verbose logging.')
+@click.option('--log-file', default=None, help='Path to the log file. Defaults to console logging if not specified.')
 @click.pass_context
-def setup(ctx, force, network, cache, verbose, log_file):
+def setup(ctx, network, cache, verbose, log_file):
     """
     Set up soletic with network and other preferences.
 
@@ -107,6 +135,10 @@ def setup(ctx, force, network, cache, verbose, log_file):
     if log_file:
         ensure_log_directory(log_file)
 
+    if cache:
+        cache_dir = create_cache_if_not_exists()
+        click.echo(f"Cache directory initialized at {cache_dir}")
+
     # Update config dictionary.
     config.update({
         'network': network,
@@ -122,10 +154,10 @@ def setup(ctx, force, network, cache, verbose, log_file):
 
 @cli.command()
 @require_config
-@click.option('-n', '--network', default=None ,help='The choice of network: "mainnet" or "devnet".')
-@click.option('--cache', default=True, help='Whether to use a cache for improved performance.')
-@click.option('-v', '--verbose', default=False, help='Enable verbose logging.')
-@click.option('--log-file', help='Path to the log file. Defaults to console logging if not specified.')
+@click.option('-n', '--network', default=None, type=click.Choice(['mainnet', 'devnet'], case_sensitive=False), help='The choice of network: "mainnet" or "devnet".')
+@click.option('--cache', is_flag=True, default=True, help='Enable/disable cache.')
+@click.option('-v', '--verbose', is_flag=True, default=False, help='Enable/disable verbose logging.')
+@click.option('--log-file', default=None, help='Path to the log file. Defaults to console logging if not specified.')
 @click.pass_context
 def update(ctx, network, cache, verbose, log_file):
     """
@@ -164,7 +196,7 @@ def update(ctx, network, cache, verbose, log_file):
 @cli.command(name="get-deployment-time")
 @require_config
 @click.option('-n', '--network', default=None ,help='Override the configuration setting, if required: "mainnet" or "devnet".')
-@click.option('-v', '--verbose', default=False, help='Override the configuration setting to enable verbose logging.')
+@click.option('-v', '--verbose', is_flag=True, default=False, help='Override the configuration setting to enable verbose logging.')
 @click.option('-f', '--format', default="unix", help='Default format is unix time. Options are: "unix" or "datetime".')
 @click.argument('program_address', type=str)
 @click.pass_context
@@ -188,6 +220,29 @@ def getProgramDeploymentDate(ctx, program_address, network, verbose, format):
             click.echo(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(response_or_err)))
     else:
         click.echo(response_or_err)
+
+
+@cli.command(name="clear-cache")
+def clear_cache():
+    """Clear the Soletic cache directory containing a map of program address to deployment time"""
+    try:
+        cache_file = get_cache_file()
+        if cache_file.exists():
+            with open(cache_file, 'w') as f:
+                json.dump({}, f)
+            click.echo("Cache cleared successfully.")
+        else:
+            click.echo("No cache file found.")
+    except Exception as e:
+        click.echo(f"Error clearing cache: {e}")
+
+
+@cli.command(name="show-config")
+def show_config():
+    """Show the stored configuration file"""
+    config = load_config()
+    for setting, value in config.items():
+        click.echo(f"   {setting}: {value}")
 
 
 if __name__ == '__main__':
