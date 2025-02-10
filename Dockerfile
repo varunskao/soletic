@@ -24,8 +24,12 @@ RUN mkdir -p .soletic_logs .soletic_cache
 # Install the package
 RUN pip install --no-cache-dir .
 
+
+# ---- OPTION 1 ----
 ENTRYPOINT ["soletic"]
 
+
+# ---- OPTION 2 ----
 # # Create a startup script
 # RUN echo '#!/bin/bash\n\
 # soletic setup -n mainnet\n\
@@ -35,4 +39,6 @@ ENTRYPOINT ["soletic"]
 
 # ENTRYPOINT ["/start.sh"]
 
+
+# ---- OPTION 3 ----
 # ENTRYPOINT soletic setup -n mainnet && soletic get-deployment-time SoLFiHG9TfgtdUXUjWAxi3LtvYuFyDLVhBWxdMZxyCe && tail -f /dev/null
