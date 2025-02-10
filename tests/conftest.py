@@ -11,7 +11,7 @@ from click.testing import CliRunner
 # ---------------- FIXTURES ----------------
 @pytest.fixture
 def mock_context():
-    return {"network": "mainnet", "cache": True, "verbose": False, "log_file": None}
+    return {"network": "mainnet", "cache": True, "verbose": False, "log_file": ".soletic_logs/soletic.log", "debug": False}
 
 @pytest.fixture
 def runner():

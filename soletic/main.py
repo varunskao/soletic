@@ -1,239 +1,255 @@
 from typing import Dict, Generator
 import logging
+import logging.handlers
 import os
+from pathlib import Path
+import json
 from functools import wraps
 from solana.rpc.api import Client
 from solders.pubkey import Pubkey
 from solders.signature import Signature
 from solders.rpc.responses import GetSignaturesForAddressResp, GetAccountInfoResp
 from solana.rpc.commitment import Finalized
+from solana.exceptions import SolanaRpcException
 
 from soletic.utils.constants import *
 from soletic.utils.errors import *
 
 
-logger = logging.getLogger(__name__)
-
-from pathlib import Path
-from functools import wraps
-import json
-
-logger = logging.getLogger(__name__)
-
-def get_cache_file():
-    """Get cache file path from environment variable or default location"""
-    cache_dir = os.getenv('SOLETIC_CACHE_DIR', os.path.expanduser("~/.soletic_cache"))
-    Path(cache_dir).mkdir(parents=True, exist_ok=True)
-    return Path(cache_dir) / 'soletic_cache.json'
-
-def program_cache(maxsize=1000):
-    """Cache decorator that uses both memory and JSON file for persistence"""
-    # Initialize cache with persistent data
-    cache = {}
-    try:
-        with open(get_cache_file()) as f:
-            cache = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        logger.debug("No existing cache file found or cache file corrupted")
-    
-    def save_persistent_cache(updated_cache):
-        try:
-            # Convert memory cache format to persistent format
-            with open(get_cache_file(), 'w') as f:
-                json.dump(updated_cache, f)
-        except Exception as e:
-            logger.warning(f"Error saving to persistent cache: {e}")
-    
-    def decorator(func):
-        @wraps(func)
-        def wrapper(program_address: str, context: Dict[str, str]):
-            if not context.get('cache', False):
-                return func(program_address, context)
-
-            network = context["network"]
-            cache_key = f"{program_address}_{network}"
-            
-            # Check memory cache
-            if cache_key in cache:
-                return cache[cache_key]
-            
-            # If not in cache, call the function
-            result = func(program_address, context)
-            
-            # Update cache if we got a result
-            if result:
-                # Update memory cache with size limit
-                if len(cache) >= maxsize:
-                    cache.pop(next(iter(cache)))
-                cache[cache_key] = result
-                
-                save_persistent_cache(cache)
-            
-            return result
+class SolanaProgramAnalyzer:
+    def __init__(self, log_file: str, verbose: bool = False, debug: bool = False):
+        """Initialize the analyzer with logging configuration."""
+        self.log_file = log_file
+        self.logger = self._setup_logger(verbose, debug)
+        self._cache = self._load_cache()
         
-        return wrapper
-    return decorator
-
-
-def get_last_n_signatures(
-    client: Client, pubkey: Pubkey, limit: int = 1000, n: int=100
-) -> Generator[Signature, None, None]:
-    """
-    Recursively fetches signatures for the given address until the earliest transaction
-    is found. In the process, it builds a queue of the latest signatures.
-    """
-    function_name = get_last_n_signatures.__name__
-    log_prefix = construct_prefix(LOGIC_PREFIX, function_name)
-    logger.info(f"{log_prefix} Start")
-
-    last_n_signatures = iter([])
-    earliest_signature = None
-
-    while True:
-        signatures: GetSignaturesForAddressResp = client.get_signatures_for_address(
-            account=pubkey, limit=limit, before=earliest_signature, commitment=Finalized
+    def _setup_logger(self, verbose: bool, debug: bool) -> logging.Logger:
+        """Configure logging based on verbose flag and log file configuration."""
+        logger = logging.getLogger(__name__)
+        logger.setLevel(logging.INFO)
+        
+        # Create formatters
+        console_formatter = logging.Formatter('%(message)s')
+        file_formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         )
+        
+        # Configure console handler based on verbose flag
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(console_formatter)
+        
+        if verbose:
+            console_handler.setLevel(logging.INFO)
+            logger.addHandler(console_handler)
+        if debug:
+            console_handler.setLevel(logging.DEBUG)
+            logger.addHandler(console_handler)
+        
+        # Get absolute path and set up file handler
+        file_path = os.path.join(os.path.expanduser("~"), self.log_file)
+        file_handler = logging.handlers.RotatingFileHandler(
+            file_path,
+            maxBytes=10485760,  # 10MB
+            backupCount=5
+        )
+        file_handler.setFormatter(file_formatter)
+        file_handler.setLevel(logging.INFO)
+        logger.addHandler(file_handler)
+        
+        return logger
+    
+    def _get_cache_file(self) -> Path:
+        """Get cache file path from environment variable or default location"""
+        cache_dir = os.path.join(os.path.expanduser("~"), os.getenv('SOLETIC_CACHE_DIR', ".soletic_cache"))
+        Path(cache_dir).mkdir(parents=True, exist_ok=True)
+        return Path(cache_dir) / 'soletic_cache.json'
+    
+    def _load_cache(self) -> Dict:
+        """Load the cache from file"""
+        try:
+            with open(self._get_cache_file()) as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            self.logger.debug("No existing cache file found or cache file corrupted")
+            return {}
+    
+    def _save_cache(self):
+        """Save the current cache to file"""
+        try:
+            with open(self._get_cache_file(), 'w') as f:
+                json.dump(self._cache, f)
+        except Exception as e:
+            self.logger.warning(f"Error saving to persistent cache: {e}")
+    
+    def _get_client(self, network: str) -> Client:
+        """Create and return a Solana client"""
+        try: 
+            url = f"https://{network}.helius-rpc.com/"
+            client = Client(url, extra_headers={"Authorization": f"Bearer {os.getenv('HELIUS_API_KEY')}"})
+            client.is_connected()
+            return client
+        except SolanaRpcException as e:
+            err_msg = f"Failed to initialize Solana client: {e}. Please check your HELIUS_API_KEY."
+            self.logger.error(err_msg)
+            raise HeliusAPIError(err_msg, status_code=401)
+    
+    def _check_and_get_pubkey_from_address(self, program_address: str) -> Pubkey:
+        """Validate that the provided program address is a valid pubkey"""
+        function_name = "_check_and_get_pubkey_from_address"
+        log_prefix = construct_prefix(CHECK_PREFIX, function_name)
+        self.logger.debug(f"{log_prefix} Start Check")
 
-        if not signatures.value:
-            # No further signatures returned; exit loop.
-            logger.warning(f"signatures response: {signatures}")
-            break
+        try:
+            program_pubkey = Pubkey.from_string(program_address)
+            self.logger.debug(f"{log_prefix} Provided program address ({program_address}) is a valid pubkey.")
+            return program_pubkey
+        except ValueError as e:
+            err_msg = f"Program address: {program_address}, is invalid because: {e}."
+            self.logger.error(f"{log_prefix} {err_msg}")
+            raise InvalidProgramSyntax(err_msg)
+    
+    def _check_and_get_program_account(self, client: Client, program_pubkey: Pubkey) -> GetAccountInfoResp:
+        """Validate that the provided program address is a valid program address"""
+        function_name = "_check_and_get_program_account"
+        log_prefix = construct_prefix(CHECK_PREFIX, function_name)
+        self.logger.debug(f"{log_prefix} Start Check")
 
-        # If we received less than the limit, this batch is the final one.
-        if len(signatures.value) < limit:
-            last_n_signatures = reversed(signatures.value[-n:])
-            break
-
-        earliest_signature = signatures.value[-1].signature
-
-    return last_n_signatures
-
-
-def find_first_valid_block_time_from_signatures(signature_iter: Generator[Signature, None, None]) -> int:
-    """
-    The function scans the signature_queue in reverse order (oldest to newest) to find the earliest valid signature and return its block time. 
-    If no valid signature exists, it returns -1.
-    """
-    return next(
-        (signature.block_time for signature in signature_iter if signature and (not signature.err) and signature.block_time),
-        -1,
-    )
+        try:
+            program_account: GetAccountInfoResp = client.get_account_info(program_pubkey)
 
 
-def _get_client(context: Dict[str, str]) -> Client:
-    url = f"https://{context.get("network")}.helius-rpc.com/"
-    return Client(url, extra_headers={"Authorization": f"Bearer {os.getenv('HELIUS_API_KEY')}"})
+            if not program_account.value:
+                err_msg = f"'{program_pubkey}' does not exist. Please provide a valid program address."
+                self.logger.error(f"{log_prefix} {err_msg}")
+                raise InvalidProgramAddress(err_msg)
 
+            if not program_account.value.executable:
+                err_msg = f"'{program_pubkey}' is not a program account. Please provide a valid program address."
+                self.logger.error(f"{log_prefix} {err_msg}")
+                raise InvalidProgramAddress(err_msg)
 
-def _check_and_get_pubkey_from_address(program_address: str) -> Pubkey:
-    """
-    Validate that the provided program address is a valid pubkey
-    """
-    function_name = _check_and_get_pubkey_from_address.__name__
-    log_prefix = construct_prefix(CHECK_PREFIX, function_name)
-    logger.info(f"{log_prefix} Start Check")
+            return program_account
 
-    try:
-        program_pubkey = Pubkey.from_string(program_address)
-        logger.info(f"{log_prefix} Provided program address ({program_address}) is a valid pubkey.")
-        return program_pubkey
-    except ValueError as e:
-        err_msg = f"Program address: {program_address}, is invalid because: {e}."
-        logger.error(f"{log_prefix} {err_msg}")
-        raise InvalidProgramSyntax(err_msg)
+        except SolanaRpcException as e:
+            err_msg = f"RPC error while retreiving account info: {e}"
+            self.logger.error(f"{log_prefix} {err_msg}")
+            raise HeliusAPIError(err_msg, status_code=e.code if hasattr(e, 'code') else 500)
+        except Exception as e:
+            err_msg = f"Unable to retrieve account info: {e}"
+            self.logger.error(f"{log_prefix} {err_msg}")
+            raise
+    
+    def get_last_n_signatures(
+        self, client: Client, pubkey: Pubkey, limit: int = 1000, n: int = 100
+    ) -> Generator[Signature, None, None]:
+        """
+        Recursively fetches signatures for the given address until the earliest transaction
+        is found. In the process, it builds a queue of the latest signatures.
+        """
+        function_name = "get_last_n_signatures"
+        log_prefix = construct_prefix(LOGIC_PREFIX, function_name)
+        self.logger.info(f"{log_prefix} Start")
 
+        last_n_signatures = iter([])
+        earliest_signature = None
 
-def _check_and_get_program_account(client: Client, program_pubkey: Pubkey) -> GetAccountInfoResp:
-    """
-    Validate that the provided program address is a valid program address 
-    """
-    func_name = _check_and_get_program_account.__name__
-    log_prefix = construct_prefix(CHECK_PREFIX, func_name)
-    logger.info(f"{log_prefix} Start Check")
+        try: 
+            while True:
+                signatures: GetSignaturesForAddressResp = client.get_signatures_for_address(
+                    account=pubkey, limit=limit, before=earliest_signature, commitment=Finalized
+                )
 
-    # Check whether we can retrieve the program account info
-    try:
-        program_account: GetAccountInfoResp = client.get_account_info(program_pubkey)
+                if not signatures.value:
+                    self.logger.warning(f"signatures response: {signatures}")
+                    break
 
-        if not program_account.value:
-            err_msg = f"'{program_pubkey}' does not exist. Please provide a valid program address."
-            logger.error(f"{log_prefix} {err_msg}")
-            raise InvalidProgramAddress(err_msg)
+                if len(signatures.value) < limit:
+                    last_n_signatures = reversed(signatures.value[-n:])
+                    break
 
-        if not program_account.value.executable:
-            # Error out if the account is not a program account
-            err_msg = f"'{program_pubkey}' is not a program account. Please provide a valid program address."
-            logger.error(f"{log_prefix} {err_msg}")
-            raise InvalidProgramAddress(err_msg)
+                earliest_signature = signatures.value[-1].signature
 
-    except Exception as e:
-        err_msg = f"{log_prefix} Unable to retrieve account info. Issue: {e}."
-        raise e
+            return last_n_signatures
 
-    return program_account
+        except SolanaRpcException as e:
+            err_msg = f"RPC error while fetching signatures: {e}"
+            self.logger.error(f"{log_prefix} {err_msg}")
+            raise HeliusAPIError(err_msg, status_code=e.code if hasattr(e, 'code') else 500)
+        except Exception as e:
+            err_msg = f"Error fetching signatures: {e}"
+            self.logger.error(f"{log_prefix} {err_msg}")
+            raise
+    
+    @staticmethod
+    def find_first_valid_block_time_from_signatures(signature_iter: Generator[Signature, None, None]) -> int:
+        """Find the earliest valid signature and return its block time"""
+        return next(
+            (signature.block_time for signature in signature_iter 
+             if signature and (not signature.err) and signature.block_time),
+            -1,
+        )
+    
+    @staticmethod
+    def parse_error(e: Exception) -> str:
+        """Parse error messages consistently"""
+        code = getattr(e, "status_code", "UNDEFINED")
+        return f"{code} | {e.args[0].__str__()}"
+    
+    def get_deployment_timestamp(self, program_address: str, network: str, use_cache: bool = True):
+        """Determines the deployment timestamp of the given program address."""
+        function_name = "get_deployment_timestamp"
+        log_prefix = construct_prefix(LOGIC_PREFIX, function_name)
+        self.logger.info(f"{log_prefix} Start Logic")
 
+        if use_cache:
+            cache_key = f"{program_address}_{network}"
+            if cache_key in self._cache:
+                return self._cache[cache_key]
 
-def parse_error(e: Exception) -> str:
-    code = getattr(e, "code", "UNDEFINED")
-    return f"{code} | {e.args[0].__str__()}" 
+        client = None
 
+        try:
+            program_pubkey = self._check_and_get_pubkey_from_address(program_address)
+            client = self._get_client(network)
+            program_account = self._check_and_get_program_account(client, program_pubkey)
 
-@program_cache(maxsize=1000)
-def get_deployment_timestamp(
-    program_address: str, 
-    context: Dict[str, str], 
-):
-    """
-    Determines the deployment timestamp of the given program address.
-    """
-    # TODO: Wrap in a big try-except and handle errors well
+            if program_account.value.owner == BPF_LOADER_PROGRAM_ID:
+                program_bytes = bytes(program_account.value.data)
+                is_program_account = program_bytes[0] == 2
+                is_program_data_account = program_bytes[0] == 3
 
-    func_name = get_deployment_timestamp.__name__
-    log_prefix = construct_prefix(LOGIC_PREFIX, func_name)
-    logger.info(f"{log_prefix} Start Logic")
+                if is_program_account:
+                    program_data_pubkey = Pubkey(program_bytes[4:36])
+                    signatures = self.get_last_n_signatures(client=client, pubkey=program_data_pubkey)
 
-    try:
-        # ---- CHECK ----
-        program_pubkey = _check_and_get_pubkey_from_address(program_address)
-    except Exception as e:
-        return parse_error(e)
+                    if not signatures:
+                        signatures = self.get_last_n_signatures(client=client, pubkey=program_pubkey)
 
-    try:
-        # ---- CHECK ----
-        client = _get_client(context)
-        program_account = _check_and_get_program_account(client, program_pubkey)
+                    transaction_block_time = self.find_first_valid_block_time_from_signatures(signatures)
+                elif is_program_data_account:
+                    signatures = self.get_last_n_signatures(client=client, pubkey=program_pubkey)
+                    transaction_block_time = self.find_first_valid_block_time_from_signatures(signatures)
+                else:
+                    raise ProgramStateNotSupported("Buffer and Unitialized program states are not supported by this API")
+            else:   
+                self.logger.warning("EXPECT DEGRADED PERFORMANCE - program account uses legacy BFP Loader")
+                signatures = self.get_last_n_signatures(client=client, pubkey=program_pubkey)
+                transaction_block_time = self.find_first_valid_block_time_from_signatures(signatures)
 
-        # ---- LOGIC ----
-        # If the program is upgradeable, check if the address corresponds to a program account or a program data account
-        if program_account.value.owner == BPF_LOADER_PROGRAM_ID:
-            program_bytes = bytes(program_account.value.data)
-            is_program_account = program_bytes[0] == 2
-            is_program_data_account = program_bytes[0] == 3
+            if use_cache and transaction_block_time != -1:
+                self._cache[cache_key] = transaction_block_time
+                self._save_cache()
 
-            if is_program_account:
-                # If it is the program account, then get signatures from program data contract as it likely contains fewer signatures
-                program_data_pubkey = Pubkey(program_bytes[4:36])
-                signatures = get_last_n_signatures(client=client, pubkey=program_data_pubkey)
+            return transaction_block_time
 
-                # Fallback in case program data contains no signatures 
-                if not signatures:
-                    signatures = get_last_n_signatures(client=client, pubkey=program_pubkey)
-
-                transaction_block_time = find_first_valid_block_time_from_signatures(signatures)
-            elif is_program_data_account:
-                signatures = get_last_n_signatures(client=client, pubkey=program_pubkey)
-                transaction_block_time = find_first_valid_block_time_from_signatures(signatures)
-            else:
-                raise ProgramStateNotSupported("Buffer and Unitialized program states are not supported by this API")
-        else:   
-            # If the program is not upgradeable, then warn the user that performance will be degraded
-            logger.warning("EXPECT DEGRADED PERFORMANCE - program account uses legacy BFP Loader")
-            signatures = get_last_n_signatures(client=client, pubkey=program_pubkey)
-            transaction_block_time = find_first_valid_block_time_from_signatures(signatures)
-
-        client._provider.session.close()
-        return transaction_block_time
-
-    except Exception as e:
-        client._provider.session.close()
-        return parse_error(e)
+        except HeliusAPIError as e:
+            return self.parse_error(e)
+        except SolanaRpcException as e:
+            err_msg = f"RPC error: {e}"
+            self.logger.error(f"{log_prefix} {err_msg}")
+            return self.parse_error(HeliusAPIError(err_msg, status_code=e.code if hasattr(e, 'code') else 500))
+        except Exception as e:
+            return self.parse_error(e)
+        finally:
+            if client:
+                client._provider.session.close()
