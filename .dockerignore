@@ -1,0 +1,7 @@
+.git
+.gitignore
+tests/
+*.pyc
+__pycache__/
+*.prof
+pytest.ini
