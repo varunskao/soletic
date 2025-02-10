@@ -21,7 +21,13 @@ cd soletic
 # Install dependencies
 pip install -e .
 
-# Run the CLI
+# Create a .env file with your Helius API key
+echo "HELIUS_API_KEY=your_api_key_here" > .env
+
+# Configure soletic
+soletic setup
+
+# Verify installation
 soletic --help
 ```
 
@@ -191,10 +197,6 @@ soletic list-settings
 Access help docs via:
 ```bash
 soletic --help
-```
-Or refer to the manual page:
-```bash
-man soletic
 ```
 
 ## Development & Testing
