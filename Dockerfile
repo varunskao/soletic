@@ -24,5 +24,15 @@ RUN mkdir -p .soletic_logs .soletic_cache
 # Install the package
 RUN pip install --no-cache-dir .
 
-# The CLI tool will be available as 'soletic' based on your project structure
 ENTRYPOINT ["soletic"]
+
+# # Create a startup script
+# RUN echo '#!/bin/bash\n\
+# soletic setup -n mainnet\n\
+# soletic get-deployment-time SoLFiHG9TfgtdUXUjWAxi3LtvYuFyDLVhBWxdMZxyCe\n\
+# tail -f /dev/null' > /start.sh
+# RUN chmod +x /start.sh
+
+# ENTRYPOINT ["/start.sh"]
+
+# ENTRYPOINT soletic setup -n mainnet && soletic get-deployment-time SoLFiHG9TfgtdUXUjWAxi3LtvYuFyDLVhBWxdMZxyCe && tail -f /dev/null
