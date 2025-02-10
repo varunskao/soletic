@@ -40,9 +40,10 @@ docker build -t soletic .
 # Run the container
 docker run -d -e HELIUS_API_KEY=<YOUR_HELIUS_API_KEY> soletic
 ```
+_Note: for the docker container to make the right calls, you must either pass in your `HELIUS_API_KEY` into the `docker run` command or you must update the docker file and add your api key when setting the env variables._ 
 
 ## Configuration
-Before running queries, `soletic` requires an initial setup:
+Before running queries, `soletic` requires an initial setup: (___Note: you must add a `HELIUS_API_KEY` to a .env file in order for the tool to work ___)
 ```bash
 soletic setup
 ```
@@ -112,16 +113,79 @@ Retrieve the first deployment timestamp of a Solana program:
 ```bash
 soletic get-deployment-time <PROGRAM_ADDRESS>
 ```
+There are a few flags that can be passed for flexibility:
+1. `--format datetime` (or `-f`) - converts the timestamp from the [unix](https://unixtime.org/) standard to a human readable date and time.
+2. `--network mainnet` (or `-n`) - a way to override the configuration defined network.
+3. `--verbose` (or `-v`) - a glimpse under the hood of the logic to understand the flow.
+3. `--debug` (or `-d`) - More detailed logs - helpful to debug errors.
+4. `--ignore-cache` - Use this flag to bypass the cache if the tool has been configured to use it
 
-### Example
-Let's try and query for the deployment time of the Radium Concentrated Liquidity program: 
+### Basic Example
+Let's try and query for the deployment time of the Radium Concentrated Liquidity (`CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK`) program: 
 ```bash
 soletic get-deployment-time CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK
 # Console Output:
 #
 # 1660709269 
 ```
-By default, the `get-deployment-time` call will return a timestamp in the developer friendly [unix](https://unixtime.org/) standard, but for those who want to see a human readable date and time, you can pass the `--format datetime` flag or `-f datetime`.
+
+### Formatting Example
+```bash
+soletic get-deployment-time CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK -f datetime
+# Console Output:
+#
+# '2022-08-17 00:07:49' 
+```
+
+### Verbose Example
+```bash
+soletic get-deployment-time CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK -v
+# Console Output:
+#
+# LOGIC - get_deployment_timestamp | Start Logic
+# LOGIC - get_last_n_signatures | Start
+# 1660709269
+```
+
+## Tool Helpers
+There are a few other CLI calls to help work with the package
+
+1. Clear cache directory:
+```bash
+soletic clear-cache
+# Console Output:
+#
+# Cache cleared successfully.
+```
+_Note: once a block reaches finality, the likelyhood of the deployment time changing is very low, which is why we would never recommend clearing the cache. In fact, building a database with these values is recommended_
+
+2. Delete current config:
+```bash
+soletic del-config
+# Console Output:
+#
+# Configuration file deleted successfully.
+```
+
+3. View the current configuration settings:
+```bash
+soletic list-config 
+# Console Output:
+#
+#   network: mainnet
+#   cache: True
+#   log_file: .soletic_logs/soletic.log
+```
+
+4. View the related directories the tool uses:
+```bash
+soletic list-settings
+# Console Output:
+#
+# CLI config exists in .soletic_config.json
+# Log files exists in .soletic_logs/soletic.log
+```
+
 
 ### Help Documentation
 Access help docs via:
