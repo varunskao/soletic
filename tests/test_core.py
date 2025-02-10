@@ -70,7 +70,7 @@ class TestAddressValidation:
                 program_address=invalid_address, network=mock_context.get("network")
             )
             assert (
-                f"400 | Program address: {invalid_address}, is invalid because"
+                f"400 | Bad Request. Program address: {invalid_address}, is invalid because"
                 in err_msg
             )
 
@@ -85,7 +85,7 @@ class TestAddressValidation:
                 program_address=non_existent_address,
                 network=mock_context.get("network"),
             )
-            expected_err_msg = f"400 | '{non_existent_address}' does not exist. Please provide a valid program address."
+            expected_err_msg = f"400 | Bad Request. '{non_existent_address}' does not exist. Please provide a valid program address."
             assert expected_err_msg == err_msg
 
     @pytest.mark.requires_api
@@ -94,5 +94,5 @@ class TestAddressValidation:
         err_msg = self.spa.get_deployment_timestamp(
             program_address=wallet_address, network=mock_context.get("network")
         )
-        expected_err_msg = f"400 | '{wallet_address}' is not a program account. Please provide a valid program address."
+        expected_err_msg = f"400 | Bad Request. '{wallet_address}' is not a program account. Please provide a valid program address."
         assert expected_err_msg == err_msg

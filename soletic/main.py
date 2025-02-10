@@ -11,7 +11,6 @@ from solders.signature import Signature
 from solders.rpc.responses import GetSignaturesForAddressResp, GetAccountInfoResp
 from solana.rpc.commitment import Finalized
 from solana.exceptions import SolanaRpcException
-from httpx import HTTPStatusError
 
 from soletic.utils.constants import *
 from soletic.utils.errors import *
@@ -109,7 +108,6 @@ class SolanaProgramAnalyzer:
                 status_code, "Unkonwn Status Code"
             )
             self.logger.error(f"{log_prefix} {error_message}")
-            self.logger.error(f"{log_prefix} Traceback: {e.__traceback__}")
             raise HeliusAPIError(error_message, status_code=status_code)
 
     def _check_and_get_pubkey_from_address(self, program_address: str) -> Pubkey:
@@ -125,7 +123,7 @@ class SolanaProgramAnalyzer:
             )
             return program_pubkey
         except ValueError as e:
-            err_msg = f"Program address: {program_address}, is invalid because: {e}."
+            err_msg = f"Bad Request. Program address: {program_address}, is invalid because: {e}."
             self.logger.error(f"{log_prefix} {err_msg}")
             raise InvalidProgramSyntax(err_msg)
 
@@ -143,12 +141,12 @@ class SolanaProgramAnalyzer:
             )
 
             if not program_account.value:
-                err_msg = f"'{program_pubkey}' does not exist. Please provide a valid program address."
+                err_msg = f"Bad Request. '{program_pubkey}' does not exist. Please provide a valid program address."
                 self.logger.error(f"{log_prefix} {err_msg}")
                 raise InvalidProgramAddress(err_msg)
 
             if not program_account.value.executable:
-                err_msg = f"'{program_pubkey}' is not a program account. Please provide a valid program address."
+                err_msg = f"Bad Request. '{program_pubkey}' is not a program account. Please provide a valid program address."
                 self.logger.error(f"{log_prefix} {err_msg}")
                 raise InvalidProgramAddress(err_msg)
 
@@ -165,7 +163,6 @@ class SolanaProgramAnalyzer:
                 status_code, "Unkonwn Status Code"
             )
             self.logger.error(f"{log_prefix} {error_message}")
-            self.logger.error(f"{log_prefix} Traceback: {e.__traceback__}")
             raise HeliusAPIError(error_message, status_code=status_code)
         except Exception as e:
             err_msg = f"Unable to retreive account info: {e}"
@@ -220,7 +217,6 @@ class SolanaProgramAnalyzer:
                 status_code, "Unkonwn Status Code"
             )
             self.logger.error(f"{log_prefix} {error_message}")
-            self.logger.error(f"{log_prefix} Traceback: {e.__traceback__}")
             raise HeliusAPIError(error_message, status_code=status_code)
         except Exception as e:
             err_msg = f"Error fetching signatures: {e}"
@@ -330,7 +326,6 @@ class SolanaProgramAnalyzer:
                 status_code, "Unkonwn Status Code"
             )
             self.logger.error(f"{log_prefix} {error_message}")
-            self.logger.error(f"{log_prefix} Traceback: {e.__traceback__}")
             return self.parse_error(
                 HeliusAPIError(error_message, status_code=status_code)
             )
