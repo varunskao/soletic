@@ -365,7 +365,7 @@ def list_settings(ctx):
     else:
         click.echo(f"CLI config exists in {os.getenv('SOLETIC_CONFIG_FILE_PATH')}")
         if config.get("log_file"):
-            click.echo(f"Log files exists in {ctx.obj.get("log_file")}")
+            click.echo(f"Log files exists in {ctx.obj.get('log_file')}")
         else:
             click.echo(
                 f"Log files exists in {os.getenv('DEFAULT_SOLETIC_LOG_FILE_PATH')}"
