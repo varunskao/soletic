@@ -36,7 +36,9 @@ def save_config(config):
 
 def get_cache_file():
     """Get cache file path from environment variable or default location"""
-    cache_dir = os.getenv("SOLETIC_CACHE_DIR", os.path.expanduser("~/.soletic_cache"))
+    cache_dir = os.path.join(
+        os.path.expanduser("~"), os.getenv("SOLETIC_CACHE_DIR", ".soletic_cache")
+    )
     Path(cache_dir).mkdir(parents=True, exist_ok=True)
     return Path(cache_dir) / "soletic_cache.json"
 
