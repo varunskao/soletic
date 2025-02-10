@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from functools import wraps
 from soletic.main import SolanaProgramAnalyzer
 from click.core import ParameterSource
-from typing import Dict
+from typing import Dict, Union
 
 
 # Add a feature where configurations can be stored in a json file for use. In docker container, make sure this is referenced in the mount.
@@ -70,7 +70,7 @@ def require_config(func):
     return wrapper
 
 
-def ensure_log_directory(log_file: str | Path) -> bool:
+def ensure_log_directory(log_file: Union[str, Path]) -> bool:
     """
     Ensure the log directory exists and is writable.
 
