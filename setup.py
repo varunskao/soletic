@@ -59,11 +59,6 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    # Package data and dependencies
-    include_package_data=True,
-    package_data={
-        "preswald": ["static/*", "static/assets/*", "templates/*"],
-    },
     python_requires=">=3.7",
     # Dependencies
     install_requires=CORE_DEPENDENCIES,
