@@ -11,6 +11,7 @@ from solders.signature import Signature
 from solders.rpc.responses import GetSignaturesForAddressResp, GetAccountInfoResp
 from solana.rpc.commitment import Finalized
 from solana.exceptions import SolanaRpcException
+from httpx import HTTPStatusError
 
 from soletic.utils.constants import *
 from soletic.utils.errors import *
@@ -26,7 +27,7 @@ class SolanaProgramAnalyzer:
     def _setup_logger(self, verbose: bool, debug: bool) -> logging.Logger:
         """Configure logging based on verbose flag and log file configuration."""
         logger = logging.getLogger(__name__)
-        logger.setLevel(logging.INFO)
+        logger.setLevel(logging.DEBUG)
 
         # Create formatters
         console_formatter = logging.Formatter("%(message)s")
@@ -51,7 +52,7 @@ class SolanaProgramAnalyzer:
             file_path, maxBytes=10485760, backupCount=5  # 10MB
         )
         file_handler.setFormatter(file_formatter)
-        file_handler.setLevel(logging.INFO)
+        file_handler.setLevel(logging.DEBUG)
         logger.addHandler(file_handler)
 
         return logger
@@ -83,6 +84,10 @@ class SolanaProgramAnalyzer:
 
     def _get_client(self, network: str) -> Client:
         """Create and return a Solana client"""
+        function_name = "_get_client"
+        log_prefix = construct_prefix(LOGIC_PREFIX, function_name)
+        self.logger.debug(f"{log_prefix} Start Logic")
+
         try:
             url = f"https://{network}.helius-rpc.com/"
             client = Client(
@@ -94,9 +99,18 @@ class SolanaProgramAnalyzer:
             client.is_connected()
             return client
         except SolanaRpcException as e:
-            err_msg = f"Failed to initialize Solana client: {e}. Please check your HELIUS_API_KEY."
-            self.logger.error(err_msg)
-            raise HeliusAPIError(err_msg, status_code=401)
+            original_exc = e.__cause__
+            status_code = (
+                original_exc.response.status_code
+                if hasattr(original_exc, "response")
+                else -1
+            )
+            error_message = HeliusAPIError.code_to_msg.get(
+                status_code, "Unkonwn Status Code"
+            )
+            self.logger.error(f"{log_prefix} {error_message}")
+            self.logger.error(f"{log_prefix} Traceback: {e.__traceback__}")
+            raise HeliusAPIError(error_message, status_code=status_code)
 
     def _check_and_get_pubkey_from_address(self, program_address: str) -> Pubkey:
         """Validate that the provided program address is a valid pubkey"""
@@ -141,13 +155,20 @@ class SolanaProgramAnalyzer:
             return program_account
 
         except SolanaRpcException as e:
-            err_msg = f"RPC error while retreiving account info: {e}"
-            self.logger.error(f"{log_prefix} {err_msg}")
-            raise HeliusAPIError(
-                err_msg, status_code=e.code if hasattr(e, "code") else 500
+            original_exc = e.__cause__
+            status_code = (
+                original_exc.response.status_code
+                if hasattr(original_exc, "response")
+                else -1
             )
+            error_message = HeliusAPIError.code_to_msg.get(
+                status_code, "Unkonwn Status Code"
+            )
+            self.logger.error(f"{log_prefix} {error_message}")
+            self.logger.error(f"{log_prefix} Traceback: {e.__traceback__}")
+            raise HeliusAPIError(error_message, status_code=status_code)
         except Exception as e:
-            err_msg = f"Unable to retrieve account info: {e}"
+            err_msg = f"Unable to retreive account info: {e}"
             self.logger.error(f"{log_prefix} {err_msg}")
             raise
 
@@ -189,11 +210,18 @@ class SolanaProgramAnalyzer:
             return last_n_signatures
 
         except SolanaRpcException as e:
-            err_msg = f"RPC error while fetching signatures: {e}"
-            self.logger.error(f"{log_prefix} {err_msg}")
-            raise HeliusAPIError(
-                err_msg, status_code=e.code if hasattr(e, "code") else 500
+            original_exc = e.__cause__
+            status_code = (
+                original_exc.response.status_code
+                if hasattr(original_exc, "response")
+                else -1
             )
+            error_message = HeliusAPIError.code_to_msg.get(
+                status_code, "Unkonwn Status Code"
+            )
+            self.logger.error(f"{log_prefix} {error_message}")
+            self.logger.error(f"{log_prefix} Traceback: {e.__traceback__}")
+            raise HeliusAPIError(error_message, status_code=status_code)
         except Exception as e:
             err_msg = f"Error fetching signatures: {e}"
             self.logger.error(f"{log_prefix} {err_msg}")
@@ -229,7 +257,8 @@ class SolanaProgramAnalyzer:
 
         if use_cache:
             cache_key = f"{program_address}_{network}"
-            if cache_key in self._cache:
+            cached_res = self._cache.get(cache_key)
+            if cached_res and not isinstance(cached_res, str):
                 return self._cache[cache_key]
 
         client = None
@@ -291,12 +320,19 @@ class SolanaProgramAnalyzer:
         except HeliusAPIError as e:
             return self.parse_error(e)
         except SolanaRpcException as e:
-            err_msg = f"RPC error: {e}"
-            self.logger.error(f"{log_prefix} {err_msg}")
+            original_exc = e.__cause__
+            status_code = (
+                original_exc.response.status_code
+                if hasattr(original_exc, "response")
+                else -1
+            )
+            error_message = HeliusAPIError.code_to_msg.get(
+                status_code, "Unkonwn Status Code"
+            )
+            self.logger.error(f"{log_prefix} {error_message}")
+            self.logger.error(f"{log_prefix} Traceback: {e.__traceback__}")
             return self.parse_error(
-                HeliusAPIError(
-                    err_msg, status_code=e.code if hasattr(e, "code") else 500
-                )
+                HeliusAPIError(error_message, status_code=status_code)
             )
         except Exception as e:
             return self.parse_error(e)
