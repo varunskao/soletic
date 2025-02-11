@@ -27,7 +27,7 @@ def load_config():
 
 def save_config(config):
     """Save configuration to a file."""
-    config_file = os.getenv("SOLETIC_CONFIG_FILE_PATH")
+    config_file = os.getenv("SOLETIC_CONFIG_FILE_PATH", ".soletic_config.json")
     config_path = os.path.join(os.path.expanduser("~"), config_file)
     with open(config_path, "w") as f:
         json.dump(config, f, indent=4)
