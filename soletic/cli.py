@@ -193,7 +193,7 @@ def setup(network, use_cache, log_file):
         )
 
     # Ensure log directory exists if log file is specified
-    log_file = log_file if log_file else os.getenv("DEFAULT_SOLETIC_LOG_FILE_PATH")
+    log_file = log_file if log_file else os.getenv("DEFAULT_SOLETIC_LOG_FILE_PATH", ".soletic_logs/soletic.log")
     ensure_log_directory(log_file)
 
     if use_cache:
