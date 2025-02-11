@@ -17,7 +17,7 @@ from typing import Dict, Union
 
 def load_config():
     """Load configuration from a file."""
-    config_file = os.getenv("SOLETIC_CONFIG_FILE_PATH")
+    config_file = os.getenv("SOLETIC_CONFIG_FILE_PATH", ".soletic_config.json")
     config_path = os.path.join(os.path.expanduser("~"), config_file)
     if os.path.exists(config_path):
         with open(config_path, "r") as f:
@@ -138,6 +138,7 @@ def cli(ctx):
     Use this tool to query the Solana blockchain for when a contract was first deployed.
     Run the 'soletic setup' command to configure your preferences.
     """
+    load_dotenv()
     ctx.ensure_object(dict)
     try:
         ctx.obj = load_config()
@@ -392,5 +393,4 @@ def delete_config(ctx):
 
 
 if __name__ == "__main__":
-    load_dotenv()
     cli(obj={})
